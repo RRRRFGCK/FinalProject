@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import random
+import matplotlib.pyplot as plt
+from compute_average_energy_and_latency import compute_average_energy_and_latency_with_CV
 
 
 # ===============================
@@ -80,7 +82,6 @@ class ReplayBuffer(object):
 # ===============================
 class DDPGAgent:
     def __init__(self, state_dim, action_dim, max_action):
-        # 初始化演员和评论家及其目标网络
         self.actor = Actor(state_dim, action_dim)
         self.actor_target = Actor(state_dim, action_dim)
         self.actor_target.load_state_dict(self.actor.state_dict())
@@ -97,18 +98,14 @@ class DDPGAgent:
         self.gamma = 0.99
         self.tau = 0.005  # 目标网络软更新系数
 
-    # 【步骤1】输入：状态 → 输出：动作（决策结果）
     def select_action(self, state):
         state = torch.FloatTensor(state.reshape(1, -1))
         action = self.actor(state).detach().numpy()[0]
-        # 将输出动作缩放到实际动作范围
         return action * self.max_action
 
-    # 【步骤5】训练：从经验池采样，更新评论家和演员网络
     def train(self, batch_size=64):
         state, action, reward, next_state, done = self.replay_buffer.sample(batch_size)
 
-        # 计算目标 Q 值（目标 = reward + γ * Q(next_state, actor_target(next_state))）
         with torch.no_grad():
             next_action = self.actor_target(next_state)
             target_Q = self.critic_target(next_state, next_action)
@@ -120,87 +117,130 @@ class DDPGAgent:
         critic_loss.backward()
         self.critic_optimizer.step()
 
-        # 演员更新：最大化当前状态下演员网络输出动作对应的 Q 值
         actor_loss = -self.critic(state, self.actor(state)).mean()
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
 
-        # 软更新目标网络参数
         for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
         for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
-    # 辅助函数：存储当前经验
     def store_transition(self, state, action, reward, next_state, done):
         self.replay_buffer.add(state, action, reward, next_state, done)
 
 
 # ===============================
-# 5. 定义一个简单环境（示例环境）
+# 5. 定义 IoV 环境（集成 compute_average_energy_and_latency_with_CV）
 # ===============================
-# 该环境仅作为示例，实际应用时请替换为 IoV 的卸载决策环境
-class DummyEnv:
-    def __init__(self, state_dim, action_dim):
-        self.state_dim = state_dim
-        self.action_dim = action_dim
-        self.max_steps = 200
+class IoVEnv:
+    def __init__(self, A=500, M=4, max_steps=50):
+        self.A = A  # 总用户数
+        self.M = M  # RSU 数量
+        self.U_m_values = [A // M] * M
+        self.state_dim = M  # 状态维度
+        self.action_dim = A  # 动作维度
+        self.max_steps = max_steps
         self.current_step = 0
 
     def reset(self):
         self.current_step = 0
-        # 返回随机初始化状态
-        return np.random.uniform(0, 1, size=self.state_dim)
+        self.U_m_values = [125] * self.M
+        return np.array(self.U_m_values) / 125.0
 
     def step(self, action):
         self.current_step += 1
-        # 【步骤3】环境执行动作，返回：下一状态、奖励、是否结束
-        next_state = np.random.uniform(0, 1, size=self.state_dim)
-        # 模拟：成本与动作有关，这里简单设定 cost = sum(action) + 随机噪声
-        cost = np.sum(action) + np.random.uniform(0, 0.1)
-        reward = -cost  # 奖励为负成本（目标是最小化成本）
+        PR_m_values = np.array([action for _ in range(self.M)])
+        avg_energy, avg_latency, D_local_total, D_rsu_total, CV_total = compute_average_energy_and_latency_with_CV(
+            self.A, self.M, self.U_m_values, PR_m_values
+        )
+        reward = - (avg_energy + avg_latency)
+        new_U_m_values = [max(100, 125 + np.random.randint(-10, 10)) for _ in range(self.M)]
+        self.U_m_values = new_U_m_values
+        next_state = np.array(new_U_m_values) / 125.0
         done = (self.current_step >= self.max_steps)
-        return next_state, reward, done, {}
-
-    def state_dimension(self):
-        return self.state_dim
-
-    def action_dimension(self):
-        return self.action_dim
+        info = {
+            'CV_total': CV_total,
+            'D_local_total': D_local_total,
+            'D_rsu_total': D_rsu_total,
+            'avg_energy': avg_energy,
+            'avg_latency': avg_latency
+        }
+        return next_state, reward, done, info
 
 
 # ===============================
-# 6. 主训练循环（整个 DRL 训练流程，分步骤说明）
+# 6. 主训练循环
 # ===============================
-def main():
-    # 输入：定义环境状态和动作的维度
-    state_dim = 10  # 示例状态维度
-    action_dim = 2  # 示例动作维度（例如分别表示卸载比例）
-    max_action = 1.0  # 动作范围 [0, 1]
-    env = DummyEnv(state_dim, action_dim)
+def run_experiment(A_value):
+    env = IoVEnv(A=A_value, M=4, max_steps=50)
+    state_dim = env.state_dim
+    action_dim = env.action_dim
+    max_action = 1.0
     agent = DDPGAgent(state_dim, action_dim, max_action)
 
-    episodes = 200  # 总训练回合数
+    # 记录能耗和时延
+    energy_values = []
+    latency_values = []
+
+    episodes = 200
     for ep in range(episodes):
-        # 【步骤1】重置环境，获得初始状态
         state = env.reset()
         episode_reward = 0
         while True:
-            # 【步骤2】根据当前状态，智能体选择动作（输入 state → 输出 action）
             action = agent.select_action(state)
-            # 【步骤3】将动作作用于环境，获得下一个状态、奖励和结束标志
-            next_state, reward, done, _ = env.step(action)
-            # 【步骤4】将 (state, action, reward, next_state, done) 经验存入经验回放缓冲区
+            next_state, reward, done, info = env.step(action)
             agent.store_transition(state, action, reward, next_state, float(done))
             state = next_state
             episode_reward += reward
-            # 【步骤5】当经验足够时，进行网络训练更新
             if agent.replay_buffer.size > 64:
                 agent.train(batch_size=64)
             if done:
                 break
-        print(f"Episode {ep + 1}: Total Reward = {episode_reward:.2f}")
+        energy_values.append(info['avg_energy'])
+        latency_values.append(info['avg_latency'])
+        print(f"Episode {ep + 1}: Total Reward = {episode_reward:.2f}, Energy = {info['avg_energy']:.2f}, Latency = {info['avg_latency']:.2f}")
+
+    return energy_values, latency_values
+
+
+# 可视化函数：绘制能耗和时延对比
+def plot_comparison(energy_values_200, latency_values_200, energy_values_280, latency_values_280, energy_values_360, latency_values_360):
+    plt.figure(figsize=(12, 6))
+
+    # 能耗
+    plt.subplot(1, 2, 1)
+    plt.plot(energy_values_200, label="A=200")
+    plt.plot(energy_values_280, label="A=280")
+    plt.plot(energy_values_360, label="A=360")
+    plt.xlabel('回合')
+    plt.ylabel('能耗')
+    plt.title('能耗对比')
+    plt.legend()
+
+    # 时延
+    plt.subplot(1, 2, 2)
+    plt.plot(latency_values_200, label="A=200")
+    plt.plot(latency_values_280, label="A=280")
+    plt.plot(latency_values_360, label="A=360")
+    plt.xlabel('回合')
+    plt.ylabel('时延')
+    plt.title('时延对比')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
+def main():
+    # 运行三组实验
+    energy_values_200, latency_values_200 = run_experiment(200)
+    energy_values_280, latency_values_280 = run_experiment(280)
+    energy_values_360, latency_values_360 = run_experiment(360)
+
+    # 绘制对比图
+    plot_comparison(energy_values_200, latency_values_200, energy_values_280, latency_values_280, energy_values_360, latency_values_360)
 
 
 if __name__ == '__main__':
