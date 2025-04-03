@@ -184,7 +184,7 @@ def run_experiment(A_value):
     energy_values = []
     latency_values = []
 
-    episodes = 200
+    episodes = 400
     for ep in range(episodes):
         state = env.reset()
         episode_reward = 0
@@ -214,9 +214,9 @@ def plot_comparison(energy_values_200, latency_values_200, energy_values_280, la
     plt.plot(energy_values_200, label="A=200")
     plt.plot(energy_values_280, label="A=280")
     plt.plot(energy_values_360, label="A=360")
-    plt.xlabel('回合')
-    plt.ylabel('能耗')
-    plt.title('能耗对比')
+    plt.xlabel('gen')
+    plt.ylabel('Energy')
+    plt.title('Energy')
     plt.legend()
 
     # 时延
@@ -224,9 +224,9 @@ def plot_comparison(energy_values_200, latency_values_200, energy_values_280, la
     plt.plot(latency_values_200, label="A=200")
     plt.plot(latency_values_280, label="A=280")
     plt.plot(latency_values_360, label="A=360")
-    plt.xlabel('回合')
-    plt.ylabel('时延')
-    plt.title('时延对比')
+    plt.xlabel('gen')
+    plt.ylabel('Latency')
+    plt.title('Latency')
     plt.legend()
 
     plt.tight_layout()
