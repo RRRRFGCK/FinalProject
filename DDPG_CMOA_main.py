@@ -18,8 +18,9 @@ class Actor(nn.Module):
         self.fc3 = nn.Linear(128, action_dim)
 
     def forward(self, x):
-        x = torch.relu(self.fc1(x))
-        x = torch.relu(self.fc2(x))
+        # 使用 LeakyReLU 激活函数（可以避免死神经元问题）
+        x = torch.leaky_relu(self.fc1(x), negative_slope=0.01)
+        x = torch.leaky_relu(self.fc2(x), negative_slope=0.01)
         # 使用 Sigmoid 保证输出在 [0, 1]，后面乘上最大动作值
         x = torch.sigmoid(self.fc3(x))
         return x
@@ -37,8 +38,9 @@ class Critic(nn.Module):
 
     def forward(self, state, action):
         x = torch.cat([state, action], 1)
-        x = torch.relu(self.fc1(x))
-        x = torch.relu(self.fc2(x))
+        # 使用 LeakyReLU 激活函数
+        x = torch.leaky_relu(self.fc1(x), negative_slope=0.01)
+        x = torch.leaky_relu(self.fc2(x), negative_slope=0.01)
         x = self.fc3(x)
         return x
 
