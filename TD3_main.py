@@ -86,7 +86,7 @@ class TD3Agent:
         self.actor = Actor(state_dim, action_dim)
         self.actor_target = Actor(state_dim, action_dim)
         self.actor_target.load_state_dict(self.actor.state_dict())
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=1e-4)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=1e-5)  # 更小的学习率
 
         self.critic_1 = Critic(state_dim, action_dim)
         self.critic_2 = Critic(state_dim, action_dim)
@@ -94,22 +94,21 @@ class TD3Agent:
         self.critic_target_2 = Critic(state_dim, action_dim)
         self.critic_target_1.load_state_dict(self.critic_1.state_dict())
         self.critic_target_2.load_state_dict(self.critic_2.state_dict())
-        self.critic_optimizer_1 = optim.Adam(self.critic_1.parameters(), lr=1e-3)
-        self.critic_optimizer_2 = optim.Adam(self.critic_2.parameters(), lr=1e-3)
+        self.critic_optimizer_1 = optim.Adam(self.critic_1.parameters(), lr=1e-4)
+        self.critic_optimizer_2 = optim.Adam(self.critic_2.parameters(), lr=1e-4)
 
         self.max_action = max_action
         self.replay_buffer = ReplayBuffer(max_size=100000, state_dim=state_dim, action_dim=action_dim)
 
         self.gamma = 0.99
-        self.tau = 0.005
-        self.policy_noise = 0.2
+        self.tau = 0.01  # 更大的软更新系数
+        self.policy_noise = 0.1  # 更小的噪声
         self.noise_clip = 0.5
-        self.policy_freq = 2
+        self.policy_freq = 4  # 每4次训练更新一次策略
 
-    def select_action(self, state):
-        state = torch.FloatTensor(state.reshape(1, -1))
-        action = self.actor(state).detach().numpy()[0]
-        return np.clip(action, -self.max_action, self.max_action)
+    def smooth_reward(self, reward, previous_energy, alpha=0.1):
+        """对能耗奖励进行平滑处理"""
+        return reward + alpha * (previous_energy - reward)
 
     def train(self, batch_size=64):
         state, action, reward, next_state, done = self.replay_buffer.sample(batch_size)
@@ -138,7 +137,7 @@ class TD3Agent:
         critic_loss_2.backward()
         self.critic_optimizer_2.step()
 
-        if self.policy_freq == 2:
+        if self.policy_freq == 4:
             actor_loss = -self.critic_1(state, self.actor(state)).mean()
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
@@ -152,6 +151,12 @@ class TD3Agent:
 
             for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
                 target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+
+    def select_action(self, state):
+        state = torch.FloatTensor(state.reshape(1, -1))
+        action = self.actor(state).detach().numpy()[0]
+        return np.clip(action, -self.max_action, self.max_action)
+
 
     def store_transition(self, state, action, reward, next_state, done):
         self.replay_buffer.add(state, action, reward, next_state, done)
