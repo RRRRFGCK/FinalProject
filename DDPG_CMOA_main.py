@@ -155,7 +155,7 @@ class IoVEnv:
         avg_energy, avg_latency, D_local_total, D_rsu_total, CV_total = compute_average_energy_and_latency_with_CV(
             self.A, self.M, self.U_m_values, PR_m_values
         )
-        reward = - (avg_energy + avg_latency)
+        reward = - (0.1 * avg_energy + avg_latency)
         new_U_m_values = [max(100, 125 + np.random.randint(-10, 10)) for _ in range(self.M)]
         self.U_m_values = new_U_m_values
         next_state = np.array(new_U_m_values) / 125.0
@@ -184,7 +184,7 @@ def run_experiment(A_value):
     energy_values = []
     latency_values = []
 
-    episodes = 400
+    episodes = 200
     for ep in range(episodes):
         state = env.reset()
         episode_reward = 0
