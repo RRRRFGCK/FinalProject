@@ -104,13 +104,15 @@ class TD3Agent:
         self.tau = 0.01  # 更大的软更新系数
         self.policy_noise = 0.1  # 更小的噪声
         self.noise_clip = 0.5
-        self.policy_freq = 4  # 每4次训练更新一次策略
+        self.policy_freq = 1  # 每次训练都更新一次目标网络
 
-    def smooth_reward(self, reward, previous_energy, alpha=0.1):
+    def smooth_reward(self, reward, previous_energy, previous_latency, alpha=0.1):
         """对能耗奖励进行平滑处理"""
-        return reward + alpha * (previous_energy - reward)
+        energy_smooth = alpha * previous_energy + (1 - alpha) * reward['avg_energy']
+        latency_smooth = alpha * previous_latency + (1 - alpha) * reward['avg_latency']
+        return - (0.01 * energy_smooth + 1.67 * latency_smooth)
 
-    def train(self, batch_size=64):
+    def train(self, batch_size=128):
         state, action, reward, next_state, done = self.replay_buffer.sample(batch_size)
 
         with torch.no_grad():
@@ -137,7 +139,7 @@ class TD3Agent:
         critic_loss_2.backward()
         self.critic_optimizer_2.step()
 
-        if self.policy_freq == 4:
+        if self.policy_freq == 1:
             actor_loss = -self.critic_1(state, self.actor(state)).mean()
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
