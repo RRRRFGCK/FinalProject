@@ -185,7 +185,7 @@ def run_experiment(A_value):
     energy_values = []
     latency_values = []
 
-    episodes = 200
+    episodes = 500
     for ep in range(episodes):
         state = env.reset()
         episode_reward = 0
