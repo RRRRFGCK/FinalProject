@@ -21,7 +21,7 @@ class Actor(nn.Module):
     def forward(self, x):
         x = self.lrelu(self.fc1(x))
         x = self.lrelu(self.fc2(x))
-        x = torch.sigmoid(self.fc3(x))
+        x = torch.sigmoid(self.fc3(x))  # 使用 sigmoid 输出动作（0到1之间）
         return x
 
 
@@ -99,6 +99,10 @@ class DDPGAgent:
         self.gamma = 0.99
         self.tau = 0.005  # 目标网络软更新系数
 
+        # 记录每个训练步骤的损失
+        self.actor_losses = []
+        self.critic_losses = []
+
     def select_action(self, state):
         state = torch.FloatTensor(state.reshape(1, -1))
         action = self.actor(state).detach().numpy()[0]
@@ -123,6 +127,10 @@ class DDPGAgent:
         actor_loss.backward()
         self.actor_optimizer.step()
 
+        # 保存损失
+        self.actor_losses.append(actor_loss.item())
+        self.critic_losses.append(critic_loss.item())
+
         for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
         for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
@@ -140,19 +148,19 @@ class IoVEnv:
         self.A = A  # 总用户数
         self.M = M  # RSU 数量
         self.U_m_values = [A // M] * M
-        self.state_dim = M  # 状态维度
-        self.action_dim = A  # 动作维度
+        self.state_dim = M  # 状态维度（每个车辆的本地处理比例）
+        self.action_dim = A  # 动作维度（每个车辆的本地处理比例）
         self.max_steps = max_steps
         self.current_step = 0
 
     def reset(self):
         self.current_step = 0
         self.U_m_values = [125] * self.M
-        return np.array(self.U_m_values) / 125.0
+        return np.array(self.U_m_values) / 125.0  # 返回归一化后的状态（本地处理比例）
 
     def step(self, action):
         self.current_step += 1
-        PR_m_values = np.array([action for _ in range(self.M)])
+        PR_m_values = np.array([action for _ in range(self.M)])  # 每个车辆的本地处理比例
         avg_energy, avg_latency, D_local_total, D_rsu_total, CV_total = compute_average_energy_and_latency_with_CV(
             self.A, self.M, self.U_m_values, PR_m_values
         )
@@ -203,11 +211,11 @@ def run_experiment(A_value):
         latency_values.append(info['avg_latency'])
         print(f"Episode {ep + 1}: Total Reward = {episode_reward:.2f}, Energy = {info['avg_energy']:.2f}, Latency = {info['avg_latency']:.2f}")
 
-    return energy_values, latency_values
+    return energy_values, latency_values, agent.actor_losses, agent.critic_losses
 
 
-# 可视化函数：绘制能耗和时延对比
-def plot_comparison(energy_values_200, latency_values_200, energy_values_280, latency_values_280, energy_values_360, latency_values_360):
+# 可视化函数：绘制能耗和时延对比，以及损失曲线
+def plot_comparison(energy_values_200, latency_values_200, energy_values_280, latency_values_280, energy_values_360, latency_values_360, actor_losses_200, critic_losses_200, actor_losses_280, critic_losses_280, actor_losses_360, critic_losses_360):
     plt.figure(figsize=(12, 6))
 
     # 能耗
@@ -233,15 +241,36 @@ def plot_comparison(energy_values_200, latency_values_200, energy_values_280, la
     plt.tight_layout()
     plt.show()
 
+    # 损失曲线
+    plt.figure(figsize=(12, 6))
+    plt.plot(actor_losses_200, label="Actor Loss (A=200)")
+    plt.plot(critic_losses_200, label="Critic Loss (A=200)")
+    plt.plot(actor_losses_280, label="Actor Loss (A=280)")
+    plt.plot(critic_losses_280, label="Critic Loss (A=280)")
+    plt.plot(actor_losses_360, label="Actor Loss (A=360)")
+    plt.plot(critic_losses_360, label="Critic Loss (A=360)")
+    plt.xlabel('Training Steps')
+    plt.ylabel('Loss')
+    plt.title('Actor and Critic Loss')
+    plt.legend()
+    plt.show()
+
 
 def main():
     # 运行三组实验
-    energy_values_200, latency_values_200 = run_experiment(200)
-    energy_values_280, latency_values_280 = run_experiment(280)
-    energy_values_360, latency_values_360 = run_experiment(360)
+    energy_values_200, latency_values_200, actor_losses_200, critic_losses_200 = run_experiment(200)
+    energy_values_280, latency_values_280, actor_losses_280, critic_losses_280 = run_experiment(280)
+    energy_values_360, latency_values_360, actor_losses_360, critic_losses_360 = run_experiment(360)
 
     # 绘制对比图
-    plot_comparison(energy_values_200, latency_values_200, energy_values_280, latency_values_280, energy_values_360, latency_values_360)
+    plot_comparison(
+        energy_values_200, latency_values_200,
+        energy_values_280, latency_values_280,
+        energy_values_360, latency_values_360,
+        actor_losses_200, critic_losses_200,
+        actor_losses_280, critic_losses_280,
+        actor_losses_360, critic_losses_360
+    )
 
 
 if __name__ == '__main__':
