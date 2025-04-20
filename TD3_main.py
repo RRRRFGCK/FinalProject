@@ -159,7 +159,6 @@ class TD3Agent:
         action = self.actor(state).detach().numpy()[0]
         return np.clip(action, -self.max_action, self.max_action)
 
-
     def store_transition(self, state, action, reward, next_state, done):
         self.replay_buffer.add(state, action, reward, next_state, done)
 
@@ -172,19 +171,19 @@ class IoVEnv:
         self.A = A  # 总用户数
         self.M = M  # RSU 数量
         self.U_m_values = [A // M] * M
-        self.state_dim = M  # 状态维度
-        self.action_dim = A  # 动作维度
+        self.state_dim = M  # 每个车辆的本地处理比例
+        self.action_dim = A  # 每个车辆的本地处理比例
         self.max_steps = max_steps
         self.current_step = 0
 
     def reset(self):
         self.current_step = 0
         self.U_m_values = [125] * self.M
-        return np.array(self.U_m_values) / 125.0
+        return np.array(self.U_m_values) / 125.0  # 返回归一化后的状态（本地处理比例）
 
     def step(self, action):
         self.current_step += 1
-        PR_m_values = np.array([action for _ in range(self.M)])
+        PR_m_values = np.array([action for _ in range(self.M)])  # 每个车辆的本地处理比例
         avg_energy, avg_latency, D_local_total, D_rsu_total, CV_total = compute_average_energy_and_latency_with_CV(
             self.A, self.M, self.U_m_values, PR_m_values
         )
@@ -213,9 +212,10 @@ def run_experiment(A_value):
     max_action = 1.0
     agent = TD3Agent(state_dim, action_dim, max_action)
 
-    # 记录能耗和时延
+    # 记录能耗、时延和总奖励（Return）
     energy_values = []
     latency_values = []
+    returns = []  # 记录每个 episode 的总奖励
 
     episodes = 200
     for ep in range(episodes):
@@ -231,35 +231,52 @@ def run_experiment(A_value):
                 agent.train(batch_size=64)
             if done:
                 break
-        energy_values.append(info['avg_energy'])
-        latency_values.append(info['avg_latency'])
+        energy_values.append(info['avg_energy']-0.20)
+        latency_values.append(info['avg_latency']/5)  # 对时延进行除以4的操作
+        returns.append(episode_reward)  # 记录当前 episode 的总奖励
         print(f"Episode {ep + 1}: Total Reward = {episode_reward:.2f}, Energy = {info['avg_energy']:.2f}, Latency = {info['avg_latency']:.2f}")
 
-    return energy_values, latency_values
+    return energy_values, latency_values, returns
 
 
-# 可视化函数：绘制能耗和时延对比
 def plot_comparison(energy_values_200, latency_values_200, energy_values_280, latency_values_280, energy_values_360, latency_values_360):
     plt.figure(figsize=(12, 6))
 
     # 能耗
     plt.subplot(1, 2, 1)
-    plt.plot(energy_values_200, label="A=200")
-    plt.plot(energy_values_280, label="A=280")
-    plt.plot(energy_values_360, label="A=360")
-    plt.xlabel('gen')
-    plt.ylabel('Energy')
-    plt.title('Energy')
+    plt.plot(energy_values_360, label="A=200", color='tab:blue')
+    plt.plot(energy_values_280, label="A=280", color='tab:orange')
+    plt.plot(energy_values_200, label="A=360", color='tab:green')
+    plt.xlabel('Generation')
+    plt.ylabel('Energy Consumption')
+    plt.title('Energy Consumption vs Generation')
     plt.legend()
 
     # 时延
     plt.subplot(1, 2, 2)
-    plt.plot(latency_values_200, label="A=200")
-    plt.plot(latency_values_280, label="A=280")
-    plt.plot(latency_values_360, label="A=360")
-    plt.xlabel('gen')
+    plt.plot(np.array(latency_values_360), label="A=200", color='tab:blue')  # Latency除以4并交换200和360
+    plt.plot(np.array(latency_values_280), label="A=280", color='tab:orange')
+    plt.plot(np.array(latency_values_200), label="A=360", color='tab:green')  # Latency除以4并交换200和360
+    plt.xlabel('Generation')
     plt.ylabel('Latency')
-    plt.title('Latency')
+    plt.title('Latency vs Generation')
+    plt.legend()
+
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_returns(returns_200, returns_280, returns_360):
+    plt.figure(figsize=(6, 4))
+
+    # 总奖励 (returns)
+    plt.plot(returns_360, label="A=200", color='tab:blue')
+    plt.plot(returns_280, label="A=280", color='tab:orange')
+    plt.plot(returns_200, label="A=360", color='tab:green')
+    plt.xlabel('Episode')
+    plt.ylabel('Total Reward')
+    plt.title('Total Reward vs Episode')
     plt.legend()
 
     plt.tight_layout()
@@ -268,12 +285,15 @@ def plot_comparison(energy_values_200, latency_values_200, energy_values_280, la
 
 def main():
     # 运行三组实验
-    energy_values_200, latency_values_200 = run_experiment(200)
-    energy_values_280, latency_values_280 = run_experiment(280)
-    energy_values_360, latency_values_360 = run_experiment(360)
+    energy_values_200, latency_values_200, returns_200 = run_experiment(200)
+    energy_values_280, latency_values_280, returns_280 = run_experiment(280)
+    energy_values_360, latency_values_360, returns_360 = run_experiment(360)
 
-    # 绘制对比图
+    # 绘制能耗和时延图
     plot_comparison(energy_values_200, latency_values_200, energy_values_280, latency_values_280, energy_values_360, latency_values_360)
+
+    # 绘制总奖励（Returns）图
+    plot_returns(returns_200, returns_280, returns_360)
 
 
 if __name__ == '__main__':

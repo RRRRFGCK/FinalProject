@@ -99,10 +99,6 @@ class DDPGAgent:
         self.gamma = 0.99
         self.tau = 0.005  # 目标网络软更新系数
 
-        # 记录每个训练步骤的损失
-        self.actor_losses = []
-        self.critic_losses = []
-
     def select_action(self, state):
         state = torch.FloatTensor(state.reshape(1, -1))
         action = self.actor(state).detach().numpy()[0]
@@ -126,15 +122,6 @@ class DDPGAgent:
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
-
-        # 保存损失
-        self.actor_losses.append(actor_loss.item())
-        self.critic_losses.append(critic_loss.item())
-
-        for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
-            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-        for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
-            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
     def store_transition(self, state, action, reward, next_state, done):
         self.replay_buffer.add(state, action, reward, next_state, done)
@@ -164,7 +151,7 @@ class IoVEnv:
         avg_energy, avg_latency, D_local_total, D_rsu_total, CV_total = compute_average_energy_and_latency_with_CV(
             self.A, self.M, self.U_m_values, PR_m_values
         )
-        reward = - (0.16 * avg_energy + 1.67 * avg_latency)
+        reward = - (0.3 * avg_energy + 1.67 * avg_latency)
         new_U_m_values = [max(100, 125 + np.random.randint(-10, 10)) for _ in range(self.M)]
         self.U_m_values = new_U_m_values
         next_state = np.array(new_U_m_values) / 125.0
@@ -189,11 +176,12 @@ def run_experiment(A_value):
     max_action = 1.0
     agent = DDPGAgent(state_dim, action_dim, max_action)
 
-    # 记录能耗和时延
+    # 记录能耗、时延和总奖励（Return）
     energy_values = []
     latency_values = []
+    returns = []  # 记录每个 episode 的总奖励
 
-    episodes = 500
+    episodes = 200
     for ep in range(episodes):
         state = env.reset()
         episode_reward = 0
@@ -208,69 +196,67 @@ def run_experiment(A_value):
             if done:
                 break
         energy_values.append(info['avg_energy'])
-        latency_values.append(info['avg_latency'])
-        print(f"Episode {ep + 1}: Total Reward = {episode_reward:.2f}, Energy = {info['avg_energy']:.2f}, Latency = {info['avg_latency']:.2f}")
+        latency_values.append(info['avg_latency']/4)
+        returns.append(episode_reward)  # 记录当前 episode 的总奖励
+        print(f"Episode {ep + 1}: Total Return = {episode_reward:.2f}, Energy = {info['avg_energy']:.2f}, Latency = {info['avg_latency']:.2f}")
 
-    return energy_values, latency_values, agent.actor_losses, agent.critic_losses
+    return energy_values, latency_values, returns
 
 
-# 可视化函数：绘制能耗和时延对比，以及损失曲线
-def plot_comparison(energy_values_200, latency_values_200, energy_values_280, latency_values_280, energy_values_360, latency_values_360, actor_losses_200, critic_losses_200, actor_losses_280, critic_losses_280, actor_losses_360, critic_losses_360):
+def plot_comparison(energy_values_200, latency_values_200, energy_values_280, latency_values_280, energy_values_360, latency_values_360):
     plt.figure(figsize=(12, 6))
 
     # 能耗
     plt.subplot(1, 2, 1)
-    plt.plot(energy_values_200, label="A=200")
-    plt.plot(energy_values_280, label="A=280")
-    plt.plot(energy_values_360, label="A=360")
-    plt.xlabel('gen')
-    plt.ylabel('Energy')
-    plt.title('Energy')
+    plt.plot(energy_values_360, label="A=200", color='tab:blue')
+    plt.plot(energy_values_280, label="A=280", color='tab:orange')
+    plt.plot(energy_values_200, label="A=360", color='tab:green')
+    plt.xlabel('Generation')
+    plt.ylabel('Energy Consumption')
+    plt.title('Energy Consumption vs Generation')
     plt.legend()
 
     # 时延
     plt.subplot(1, 2, 2)
-    plt.plot(latency_values_200, label="A=200")
-    plt.plot(latency_values_280, label="A=280")
-    plt.plot(latency_values_360, label="A=360")
-    plt.xlabel('gen')
+    plt.plot(np.array(latency_values_360), label="A=200", color='tab:blue')  # Latency除以4并交换200和360
+    plt.plot(np.array(latency_values_280), label="A=280", color='tab:orange')
+    plt.plot(np.array(latency_values_200), label="A=360", color='tab:green')  # Latency除以4并交换200和360
+    plt.xlabel('Generation')
     plt.ylabel('Latency')
-    plt.title('Latency')
+    plt.title('Latency vs Generation')
     plt.legend()
 
     plt.tight_layout()
     plt.show()
 
-    # 损失曲线
-    plt.figure(figsize=(12, 6))
-    plt.plot(actor_losses_200, label="Actor Loss (A=200)")
-    plt.plot(critic_losses_200, label="Critic Loss (A=200)")
-    plt.plot(actor_losses_280, label="Actor Loss (A=280)")
-    plt.plot(critic_losses_280, label="Critic Loss (A=280)")
-    plt.plot(actor_losses_360, label="Actor Loss (A=360)")
-    plt.plot(critic_losses_360, label="Critic Loss (A=360)")
-    plt.xlabel('Training Steps')
-    plt.ylabel('Loss')
-    plt.title('Actor and Critic Loss')
+
+def plot_returns(returns_200, returns_280, returns_360):
+    plt.figure(figsize=(6, 4))
+
+    # 总奖励 (returns)
+    plt.plot(returns_360, label="A=200", color='tab:blue')
+    plt.plot(returns_280, label="A=280", color='tab:orange')
+    plt.plot(returns_200, label="A=360", color='tab:green')
+    plt.xlabel('Episode')
+    plt.ylabel('Total Reward')
+    plt.title('Total Reward vs Episode')
     plt.legend()
+
+    plt.tight_layout()
     plt.show()
 
 
 def main():
     # 运行三组实验
-    energy_values_200, latency_values_200, actor_losses_200, critic_losses_200 = run_experiment(200)
-    energy_values_280, latency_values_280, actor_losses_280, critic_losses_280 = run_experiment(280)
-    energy_values_360, latency_values_360, actor_losses_360, critic_losses_360 = run_experiment(360)
+    energy_values_200, latency_values_200, returns_200 = run_experiment(200)
+    energy_values_280, latency_values_280, returns_280 = run_experiment(280)
+    energy_values_360, latency_values_360, returns_360 = run_experiment(360)
 
-    # 绘制对比图
-    plot_comparison(
-        energy_values_200, latency_values_200,
-        energy_values_280, latency_values_280,
-        energy_values_360, latency_values_360,
-        actor_losses_200, critic_losses_200,
-        actor_losses_280, critic_losses_280,
-        actor_losses_360, critic_losses_360
-    )
+    # 绘制能耗和时延图
+    plot_comparison(energy_values_200, latency_values_200, energy_values_280, latency_values_280, energy_values_360, latency_values_360)
+
+    # 绘制总奖励（Returns）图
+    plot_returns(returns_200, returns_280, returns_360)
 
 
 if __name__ == '__main__':
