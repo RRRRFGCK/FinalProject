@@ -1,61 +1,61 @@
-# README for IoV Optimization Project
+# IoV Optimization Project README
 
 ## Project Overview
 
-This project aims to optimize latency and energy consumption in the Internet of Vehicles (IoV) using three different optimization approaches: **DDPG** (Deep Deterministic Policy Gradient), **NSGA-II** (Non-dominated Sorting Genetic Algorithm II), and **TD3** (Twin Delayed Deep Deterministic Policy Gradient). Each optimization method independently runs experiments that balance latency and energy consumption in IoV systems. The `compute_average_energy_and_latency.py` script is called by each approach to evaluate and report performance.
+This project aims to optimize latency and energy consumption in the Internet of Vehicles (IoV) using three different optimization approaches: **NSGA-II** (Non-dominated Sorting Genetic Algorithm II), **DDPG** (Deep Deterministic Policy Gradient), and **TD3** (Twin Delayed Deep Deterministic Policy Gradient). Each optimization method independently runs experiments that balance latency and energy consumption in IoV systems. The `compute_average_energy_and_latency.py` script is called by each approach to evaluate and report performance.
 
 ## Project Structure
 
 This repository contains the following Python scripts:
 
 1. **`compute_average_energy_and_latency.py`**  
-   This script computes the average energy consumption and latency for the IoV system, providing key performance metrics. It is called by each optimization algorithm to calculate and assess the results.
+   This script contains the key modeling part, used to calculate latency and energy consumption at each optimization step. It calculates the latency and energy values for each experiment step, providing performance evaluation results for each optimization method. Each optimization algorithm calls this script to compute and evaluate the results.
 
-2. **`DDPG_main.py`**  
-   Implements the **DDPG** reinforcement learning algorithm to optimize latency and energy consumption. The script trains a deep reinforcement learning model to minimize these metrics. The output includes:
+2. **`NGSA_main.py`**  
+   Implements the **NSGA-II** genetic algorithm to optimize latency and energy consumption in the IoV system. This multi-objective optimization method evaluates the trade-off between latency and energy, generating solutions that form the Pareto front. The output includes:
+   
+   - The Pareto front showing the trade-off between latency and energy.
+   - Unit-time solution counts and diversity metrics.
 
+3. **`DDPG_main.py`**  
+   Implements the **DDPG** deep reinforcement learning algorithm to optimize latency and energy consumption in the IoV system. The script trains a deep reinforcement learning model to minimize these metrics. The output includes:
+   
    - Latency and energy consumption curves over time.
    - Unit-time solution counts and diversity metrics.
 
-3. **`NGSA_main.py`**  
-   Implements the **NSGA-II** genetic algorithm to optimize the IoV system. This multi-objective approach evaluates trade-offs between latency and energy, generating solutions that form the Pareto front. The output includes:
-
-   - The Pareto front showing latency and energy trade-offs.
-   - Unit-time solution counts and diversity metrics.
-
 4. **`TD3_main.py`**  
-   Implements the **TD3** reinforcement learning algorithm, an improved version of DDPG. It focuses on stabilizing training and improving exploration. The output includes:
-
+   Implements the **TD3** deep reinforcement learning algorithm, which is an improved version of DDPG, aimed at enhancing exploration and improving training stability. The output includes:
+   
    - Latency and energy consumption curves over time.
 
 ## Model Overview
 
-The optimization of latency and energy consumption is modeled as a mathematical problem that integrates communication, sensing, and computation components within IoV systems. Each optimization method (DDPG, NSGA-II, TD3) addresses this problem with distinct methodologies:
+In this project, the optimization of latency and energy consumption is modeled in the **`compute_average_energy_and_latency.py`** script. This function is used to calculate latency and energy consumption at each optimization step, which is the key modeling process of the project. The specific modeling process is as follows:
 
-- **DDPG**: A deep reinforcement learning approach using continuous action spaces to optimize system performance.
-- **NSGA-II**: A genetic algorithm that produces a Pareto front by evaluating the trade-offs between latency and energy consumption.
-- **TD3**: A variant of DDPG that improves exploration by addressing Q-value overestimation, providing a more stable optimization process.
+- **Integration of Communication, Sensing, and Computation**: The script integrates communication, sensing, and computation in IoV systems and calculates the latency and energy consumption at each optimization step.
+- **Problem Modeling**: By calling the calculation function at each optimization step, it computes the latency and energy values, which evaluate the system's performance and ultimately form a complete optimization process.
+- **Optimization Methods**: Different optimization algorithms (NSGA-II, DDPG, TD3) solve this problem separately. NSGA-II uses a genetic algorithm to generate the Pareto front through non-dominated sorting, while DDPG and TD3 use deep reinforcement learning to train an agent to find optimal latency and energy solutions.
 
-Each optimization method runs independently and utilizes `compute_average_energy_and_latency.py` to evaluate and output results.
+Each optimization method runs independently and calls **`compute_average_energy_and_latency.py`** to evaluate and output results.
 
 ## Results and Outputs
 
 Each experiment produces the following outputs:
 
 1. **NSGA-II**:
-   - **Pareto Front**: A set of non-dominated solutions representing the trade-offs between latency and energy consumption.
-   - **Unit-Time Solution Count**: The number of solutions that were feasible within each unit time.
-   - **Diversity**: The variety of solutions generated over the course of the optimization process.
+   - **Pareto Front**: A set of non-dominated solutions representing the trade-off between latency and energy consumption.
+   - **Unit-Time Solution Count**: The number of feasible solutions within each unit time.
+   - **Diversity**: The variety of solutions generated during the optimization process.
 
 2. **DDPG**:
    - **Latency and Energy Curves**: The evolution of latency and energy consumption over time during training.
    - **Unit-Time Solution Count**: The number of solutions per unit time.
-   - **Diversity**: The diversity of solutions achieved by the agent across episodes.
+   - **Diversity**: The diversity of solutions generated by the agent across episodes.
 
 3. **TD3**:
    - **Latency and Energy Curves**: The evolution of latency and energy consumption over time during training.
 
-Each experiment calls `compute_average_energy_and_latency.py` to compute and output the system’s overall performance, including energy and latency metrics.
+Each experiment calls **`compute_average_energy_and_latency.py`** to calculate and output the overall system performance, including energy and latency metrics.
 
 ## Requirements
 
@@ -83,7 +83,7 @@ Execute the NSGA-II optimization by running:
 python NGSA_main.py
 ```
 
-This script will execute the NSGA-II genetic algorithm and generate solutions that optimize latency and energy consumption. The output includes the Pareto front and diversity metrics.
+This script will execute the NSGA-II genetic algorithm, generating solutions to optimize latency and energy consumption. The output includes the Pareto front and diversity metrics.
 
 ### 2. **Run DDPG Optimization**  
 Execute the DDPG optimization using:
@@ -92,7 +92,7 @@ Execute the DDPG optimization using:
 python DDPG_main.py
 ```
 
-This script will train a reinforcement learning model using DDPG to minimize latency and energy consumption. The output includes latency and energy curves, as well as unit-time solution counts and diversity metrics.
+This script will train a deep reinforcement learning model using DDPG to minimize latency and energy consumption. The output includes latency and energy curves, unit-time solution counts, and diversity metrics.
 
 ### 3. **Run TD3 Optimization**  
 Execute the TD3 optimization with:
